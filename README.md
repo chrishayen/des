@@ -1,6 +1,6 @@
 # DES Encryption
 
-A pure Odin implementation of the Data Encryption Standard (DES) cipher, featuring both ECB and CBC modes with PKCS7 padding support.
+A pure Zig implementation of the Data Encryption Standard (DES) cipher, featuring both ECB and CBC modes with PKCS7 padding support.
 
 ## Features
 
@@ -8,7 +8,7 @@ A pure Odin implementation of the Data Encryption Standard (DES) cipher, featuri
 - **CBC Mode**: Cipher Block Chaining mode for secure multi-block encryption
 - **PKCS7 Padding**: Automatic padding and unpadding for arbitrary-length data
 - **NIST Validated**: Comprehensive test suite using NIST SP 800-20 test vectors
-- **Zero Dependencies**: Pure Odin implementation with no external dependencies
+- **Zero Dependencies**: Pure Zig implementation with no external dependencies
 
 ## Installation
 
@@ -21,75 +21,76 @@ cd des
 
 ### ECB Mode (Single Block)
 
-```odin
-package main
+```zig
+const std = @import("std");
+const des = @import("des.zig");
 
-import "des"
-
-main :: proc() {
-    key := [8]u8{0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF}
-    plaintext := [8]u8{0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x74}
+pub fn main() !void {
+    const key = [8]u8{ 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+    const plaintext = [8]u8{ 0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x74 };
 
     // Setup encryption subkeys
-    subkeys: [16]u64
-    des.des_key_setup(key[:], &subkeys, .Encrypt)
+    var subkeys: [16]u64 = undefined;
+    des.keySetup(&key, &subkeys, .encrypt);
 
     // Encrypt
-    ciphertext: [8]u8
-    des.des_crypt(plaintext[:], ciphertext[:], &subkeys)
+    var ciphertext: [8]u8 = undefined;
+    des.crypt(&plaintext, &ciphertext, &subkeys);
 
     // Setup decryption subkeys
-    des.des_key_setup(key[:], &subkeys, .Decrypt)
+    des.keySetup(&key, &subkeys, .decrypt);
 
     // Decrypt
-    decrypted: [8]u8
-    des.des_crypt(ciphertext[:], decrypted[:], &subkeys)
+    var decrypted: [8]u8 = undefined;
+    des.crypt(&ciphertext, &decrypted, &subkeys);
 }
 ```
 
 ### CBC Mode (Multi-Block)
 
-```odin
-package main
+```zig
+const std = @import("std");
+const des = @import("des.zig");
 
-import "des"
-
-main :: proc() {
-    key := [8]u8{0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF}
-    iv := [8]u8{0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF}
-    plaintext := []u8{0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x74,
-                      0x68, 0x65, 0x20, 0x74, 0x69, 0x6D, 0x65, 0x20}
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+    const key = [8]u8{ 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
+    const iv = [8]u8{ 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF };
+    const plaintext = [16]u8{
+        0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x74,
+        0x68, 0x65, 0x20, 0x74, 0x69, 0x6D, 0x65, 0x20,
+    };
 
     // Encrypt
-    ciphertext := make([]u8, len(plaintext))
-    defer delete(ciphertext)
-    des.des_cbc_encrypt(plaintext, ciphertext, key[:], iv[:])
+    const ciphertext = try allocator.alloc(u8, plaintext.len);
+    defer allocator.free(ciphertext);
+    des.cbcEncrypt(&plaintext, ciphertext, &key, &iv);
 
     // Decrypt
-    decrypted := make([]u8, len(ciphertext))
-    defer delete(decrypted)
-    des.des_cbc_decrypt(ciphertext, decrypted, key[:], iv[:])
+    const decrypted = try allocator.alloc(u8, ciphertext.len);
+    defer allocator.free(decrypted);
+    des.cbcDecrypt(ciphertext, decrypted, &key, &iv);
 }
 ```
 
 ### PKCS7 Padding
 
-```odin
-package main
+```zig
+const std = @import("std");
+const des = @import("des.zig");
 
-import "des"
-
-main :: proc() {
-    data := []u8{0x01, 0x02, 0x03, 0x04, 0x05}
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+    const data = [5]u8{ 0x01, 0x02, 0x03, 0x04, 0x05 };
 
     // Add padding
-    padded := des.pkcs7_pad(data, des.DES_BLOCK_SIZE)
-    defer delete(padded)
+    const padded = try des.pkcs7Pad(allocator, &data, des.DES_BLOCK_SIZE);
+    defer allocator.free(padded);
 
     // Remove padding
-    unpadded, ok := des.pkcs7_unpad(padded)
-    if ok {
+    if (des.pkcs7Unpad(padded)) |unpadded| {
         // unpadded now contains the original data
+        _ = unpadded;
     }
 }
 ```
@@ -98,44 +99,44 @@ main :: proc() {
 
 ### Constants
 
-- `DES_BLOCK_SIZE :: 8` - DES block size in bytes
+- `DES_BLOCK_SIZE = 8` - DES block size in bytes
 
 ### Types
 
-```odin
-DES_Mode :: enum {
-    Encrypt,
-    Decrypt,
-}
+```zig
+pub const Mode = enum {
+    encrypt,
+    decrypt,
+};
 ```
 
 ### Functions
 
-#### `des_key_setup`
-```odin
-des_key_setup :: proc(key: []u8, subkeys: ^[16]u64, mode: DES_Mode)
+#### `keySetup`
+```zig
+pub fn keySetup(key: []const u8, subkeys: *[16]u64, mode: Mode) void
 ```
 Generates 16 subkeys from an 8-byte DES key for encryption or decryption.
 
 **Parameters:**
 - `key`: 8-byte DES key
 - `subkeys`: Pointer to array that will hold the 16 generated subkeys
-- `mode`: `.Encrypt` or `.Decrypt`
+- `mode`: `.encrypt` or `.decrypt`
 
-#### `des_crypt`
-```odin
-des_crypt :: proc(input: []u8, output: []u8, subkeys: ^[16]u64)
+#### `crypt`
+```zig
+pub fn crypt(input: []const u8, output: []u8, subkeys: *const [16]u64) void
 ```
 Encrypts or decrypts a single 8-byte block using DES ECB mode.
 
 **Parameters:**
 - `input`: 8-byte input block
 - `output`: 8-byte output buffer
-- `subkeys`: Pointer to subkeys from `des_key_setup`
+- `subkeys`: Pointer to subkeys from `keySetup`
 
-#### `des_cbc_encrypt`
-```odin
-des_cbc_encrypt :: proc(plaintext: []u8, ciphertext: []u8, key: []u8, iv: []u8)
+#### `cbcEncrypt`
+```zig
+pub fn cbcEncrypt(plaintext: []const u8, ciphertext: []u8, key: []const u8, iv: []const u8) void
 ```
 Encrypts data using DES in CBC mode.
 
@@ -145,9 +146,9 @@ Encrypts data using DES in CBC mode.
 - `key`: 8-byte DES key
 - `iv`: 8-byte initialization vector
 
-#### `des_cbc_decrypt`
-```odin
-des_cbc_decrypt :: proc(ciphertext: []u8, plaintext: []u8, key: []u8, iv: []u8)
+#### `cbcDecrypt`
+```zig
+pub fn cbcDecrypt(ciphertext: []const u8, plaintext: []u8, key: []const u8, iv: []const u8) void
 ```
 Decrypts data using DES in CBC mode.
 
@@ -157,36 +158,36 @@ Decrypts data using DES in CBC mode.
 - `key`: 8-byte DES key
 - `iv`: 8-byte initialization vector
 
-#### `pkcs7_pad`
-```odin
-pkcs7_pad :: proc(data: []u8, block_size: int, allocator := context.allocator) -> []u8
+#### `pkcs7Pad`
+```zig
+pub fn pkcs7Pad(allocator: std.mem.Allocator, data: []const u8, block_size: usize) ![]u8
 ```
 Adds PKCS7 padding to data.
 
 **Parameters:**
+- `allocator`: Memory allocator
 - `data`: Input data
 - `block_size`: Block size for padding (typically 8 for DES)
-- `allocator`: Optional custom allocator
 
 **Returns:** Padded data (caller must free)
 
-#### `pkcs7_unpad`
-```odin
-pkcs7_unpad :: proc(data: []u8) -> ([]u8, bool)
+#### `pkcs7Unpad`
+```zig
+pub fn pkcs7Unpad(data: []const u8) ?[]const u8
 ```
 Removes PKCS7 padding from data.
 
 **Parameters:**
 - `data`: Padded data
 
-**Returns:** `(unpadded_data, success)` where success indicates valid padding
+**Returns:** `unpadded_data` or `null` if padding is invalid
 
 ## Testing
 
 The implementation includes comprehensive NIST test vectors:
 
 ```bash
-odin test .
+zig test des_test.zig
 ```
 
 Test coverage includes:
